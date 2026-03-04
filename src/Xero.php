@@ -353,6 +353,21 @@ class Xero
             ];
         } catch (RequestException $e) {
             $response = json_decode($e->response->body());
+
+            // Try to find validation errors, join them all into a string
+            $validationErrors = null;
+            if ($response && $response->Elements) {
+                $validationErrors = collect($response->Elements)
+                    ->filter(fn ($element) => $element->ValidationErrors)
+                    ->map(fn ($element) => collect($element->ValidationErrors)
+                        ->map(fn ($error) => $error->Message)->implode(', '))
+                    ->implode(', ');
+            }
+
+            if ($validationErrors) {
+                throw new Exception($validationErrors);
+            }
+
             throw new Exception($response->Detail ?? "Type: $response?->Type Message: $response?->Message Error Number: $response?->ErrorNumber");
         } catch (Exception $e) {
             throw new Exception($e->getMessage());
