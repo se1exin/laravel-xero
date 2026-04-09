@@ -16,6 +16,7 @@ use Dcblogdev\Xero\Traits\XeroHelpersTrait;
 use Exception;
 use Illuminate\Contracts\Encryption\DecryptException;
 use Illuminate\Contracts\Foundation\Application;
+use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\RequestException;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Routing\Redirector;
@@ -92,22 +93,34 @@ class Xero
 
     public function contacts(): Contacts
     {
-        return new Contacts;
+        $resource = new Contacts;
+        $resource->setTenantId($this->tenant_id);
+
+        return $resource;
     }
 
     public function creditnotes(): CreditNotes
     {
-        return new CreditNotes;
+        $resource = new CreditNotes;
+        $resource->setTenantId($this->tenant_id);
+
+        return $resource;
     }
 
     public function invoices(): Invoices
     {
-        return new Invoices;
+        $resource = new Invoices;
+        $resource->setTenantId($this->tenant_id);
+
+        return $resource;
     }
 
     public function webhooks(): Webhooks
     {
-        return new Webhooks;
+        $resource = new Webhooks;
+        $resource->setTenantId($this->tenant_id);
+
+        return $resource;
     }
 
     public function isTokenValid(): bool
@@ -134,21 +147,25 @@ class Xero
 
     public function disconnect(): void
     {
-        try {
-            $token = $this->getTokenData();
+        $token = $this->getTokenData();
 
+        if ($token === null) {
+            return;
+        }
+
+        try {
             Http::withHeaders([
                 'authorization' => 'Basic '.base64_encode(config('xero.clientId').':'.config('xero.clientSecret')),
             ])
                 ->asForm()
                 ->post(self::$revokeUrl, [
                     'token' => $token->refresh_token,
-                ])->throw();
-
-            $token->delete();
-        } catch (Exception $e) {
-            throw new RuntimeException('error getting tenant: '.$e->getMessage());
+                ]);
+        } catch (Exception) {
+            // Ignore revocation errors — local token will still be deleted below.
         }
+
+        $token->delete();
     }
 
     /**
@@ -341,7 +358,8 @@ class Xero
         }
 
         try {
-            $response = Http::withToken($this->getAccessToken())
+            $response = Http::retry([200, 500, 1000], fn ($exception) => $exception instanceof ConnectionException || ($exception instanceof RequestException && $exception->response->serverError()))
+                ->withToken($this->getAccessToken())
                 ->withHeaders(array_merge(['Xero-tenant-id' => $this->getTenantId()], $headers))
                 ->accept($accept)
                 ->$type(self::$baseUrl.$request, $data)
