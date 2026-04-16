@@ -174,7 +174,7 @@ class Xero
      *
      * @throws Exception
      */
-    public function connect(): RedirectResponse|Application|Redirector
+    public function connect(?string $state): RedirectResponse|Application|Redirector
     {
         // when no code param redirect to Microsoft
         if (request()->has('code')) {
@@ -224,6 +224,7 @@ class Xero
             'client_id' => config('xero.clientId'),
             'redirect_uri' => config('xero.redirectUri'),
             'scope' => config('xero.scopes'),
+            'state' => $state,
         ]);
 
         return redirect()->away($url);
