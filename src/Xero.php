@@ -188,6 +188,18 @@ class Xero
 
                 $result = $this->sendPost(self::$tokenUrl, $params);
 
+                $tokenParts = explode('.', $result['access_token']);
+
+                $authEventId = null;
+
+                if (count($tokenParts) === 3) {
+                    // The second part is the payload
+                    $payload = base64_decode(strtr($tokenParts[1], '-_', '+/'));
+                    $decodedPayload = json_decode($payload, true);
+
+                    $authEventId = $decodedPayload['authentication_event_id'];
+                }
+
                 try {
                     $response = Http::withHeaders([
                         'Authorization' => 'Bearer '.$result['access_token'],
@@ -198,6 +210,11 @@ class Xero
                         ->json();
 
                     foreach ($response as $tenant) {
+
+                        if ($authEventId && $tenant['authEventId'] != $authEventId) {
+                            continue;
+                        }
+
                         $tenantData = [
                             'auth_event_id' => $tenant['authEventId'],
                             'tenant_id' => $tenant['tenantId'],
